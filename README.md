@@ -41,6 +41,20 @@
 
 包就是个 zip（后缀改成 `.scripting`），里面是 `华农表/` + `script.json`，导入后脚本名显示「华农表」。
 
+### 用 App 里的「导入远程脚本」填地址
+
+Scripting 的这个入口要的是**脚本本身**的地址，支持三种：
+
+| 形式 | 地址 |
+| --- | --- |
+| 仓库内的脚本目录 | `https://github.com/condedby/scripting/tree/main/华农表` |
+| zip 文件 | `https://raw.githubusercontent.com/condedby/scripting/main/Release/SCAU-Table.zip` |
+| 发布包 | `https://raw.githubusercontent.com/condedby/scripting/main/Release/SCAU-Table.scripting` |
+
+> ❌ 直接填 `https://github.com/condedby/scripting` 会报「不支持的脚本文件」——本仓库根目录是合集（README / Release / 脚本子目录），不是一个脚本。只有「仓库根目录就是 `script.json` 所在层」的仓库才能直接填仓库地址。
+
+中文目录名在地址里会被转义成 `%E5%8D%8E%E5%86%9C%E8%A1%A8`，两种写法等价。
+
 ### 手动安装
 
 1. 在 iPhone 上装 [Scripting](https://scripting.fun)（需 TestFlight / App Store 版本）
