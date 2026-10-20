@@ -1,0 +1,30 @@
+{
+  "runInApp": true,
+  "iconImage": "",
+  "name": "华农表",
+  "icon": "calendar",
+  "contributors": [],
+  "entry": "index.tsx",
+  "remoteResource": null,
+  "description": "SCAU timetable: sign in to read your weekly schedule; Home Screen widgets (small/medium = today's classes, switching to tomorrow once today's are over; large = whole week) and Lock Screen widgets showing the next class.",
+  "intentInputTypes": [],
+  "author": null,
+  "localizedNames": {
+    "es": "",
+    "de": "",
+    "en": "SCAU Table",
+    "zh": "华农表",
+    "pt": "",
+    "it": "",
+    "ja": "",
+    "ru": "",
+    "fr": ""
+  },
+  "version": "1.3.0",
+  "localizedDescriptions": {
+    "en": "SCAU timetable with Home Screen widgets: small/medium show today's classes and switch to tomorrow after today's are over; large shows the whole week with today framed; Lock Screen widgets show the next class.",
+    "zh": "华南农业大学课表：登录教务系统查看每周课表；主屏小组件显示今天的课（今天上完后切到明天）或整周课表，锁屏小组件显示下一节课"
+  },
+  "color": "#46708F",
+  "permissions": null
+}
