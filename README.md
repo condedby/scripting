@@ -53,6 +53,26 @@
 
 小组件：长按主屏 › 添加小组件 › Scripting › 选「华农表」。
 
+## 自动更新（远程脚本）
+
+`script.json` 里配了：
+
+```json
+"remoteResource": {
+  "url": "https://raw.githubusercontent.com/condedby/scripting/main/Release/SCAU-Table.scripting",
+  "autoUpdateInterval": 1800
+}
+```
+
+含义：装过这个脚本后，App 每 30 分钟去上面那个地址看一眼；有变化就整包替换本地代码。所以以后改了代码、推了新的 `.scripting` 包，**用户不用重新导入**。
+
+几个必须知道的点：
+
+- 只认 **`url` + `autoUpdateInterval`** 两个字段（这是 `ScriptMetadata` 的官方定义）。网上常见的 `hash` 字段并不在支持范围内，写了也不起作用。
+- 仓库现在是**私有**的，`raw.githubusercontent.com` 取不到 → 自动更新**实际不会生效**，脚本仍以本地文件运行。等仓库转公开后自动开始工作。
+- **开发时要小心**：如果改了本地文件但没推上去，下一次自动更新会拿远端旧版把本地覆盖掉。改代码期间可以暂时把 `autoUpdateInterval` 改成 `null`，或者只在“准备发布”时再改。
+
+
 > ⚠️ `__preview.tsx` 是开发用的预览入口，**会往缓存里写一份全占位的假课表**（课名 `示例课程 A`、学号 `00000000000`），只是想用脚本的话别打开它。它覆盖前会把真实缓存备份到 `scau.cache.bak` / `scau.username.bak`，误开可以这样救回来：
 >
 > ```ts
