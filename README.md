@@ -41,8 +41,6 @@
 
 包就是个 zip（后缀改成 `.scripting`），里面是 `华农表/` + `script.json`，导入后脚本名显示「华农表」。
 
-> ⚠️ 仓库目前是**私有**的，`raw.githubusercontent.com` 的链接需要登录 GitHub 才能下载；等仓库转公开后这条链接才对所有人可用。
-
 ### 手动安装
 
 1. 在 iPhone 上装 [Scripting](https://scripting.fun)（需 TestFlight / App Store 版本）
@@ -69,7 +67,7 @@
 几个必须知道的点：
 
 - 只认 **`url` + `autoUpdateInterval`** 两个字段（这是 `ScriptMetadata` 的官方定义）。网上常见的 `hash` 字段并不在支持范围内，写了也不起作用。
-- 仓库现在是**私有**的，`raw.githubusercontent.com` 取不到 → 自动更新**实际不会生效**，脚本仍以本地文件运行。等仓库转公开后自动开始工作。
+- 更新取的是上表那条 `raw.githubusercontent.com` 链接（`main` 分支的最新包），所以**推了新包就等于发版**。
 - **开发时要小心**：如果改了本地文件但没推上去，下一次自动更新会拿远端旧版把本地覆盖掉。改代码期间可以暂时把 `autoUpdateInterval` 改成 `null`，或者只在“准备发布”时再改。
 
 
@@ -125,7 +123,7 @@
 
 Copyright (c) 2026 condedby，保留所有权利。
 
-仓库当前**未授权**他人使用、修改或再分发。将来如果放开，会在这里补上明确的开源许可（比如 MIT）和 `LICENSE` 文件。
+本仓库公开是为了方便查看与安装；**除此之外未授予任何额外许可**（例如修改后再分发、或用于商业用途）。将来如放宽，会在这里补上明确的开源许可（比如 MIT）和 `LICENSE` 文件。
 
 ## 目录补充
 
