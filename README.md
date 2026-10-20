@@ -34,14 +34,14 @@
 
 ### 一键导入（推荐）
 
-在装好 Scripting 的 iPhone / iPad 上打开这个链接，App 会自动拉取仓库并导入「华农表」：
+1. 装 [Scripting](https://scripting.fun)（TestFlight / App Store 版本）
+2. 下载并导入最新发布包：[`Release/SCAU-Table.scripting`](https://raw.githubusercontent.com/condedby/scripting/main/Release/SCAU-Table.scripting)
 
-```
-scripting://import_scripts?urls=%5B%22https%3A%2F%2Fgithub.com%2Fcondedby%2Fscripting%2Farchive%2Frefs%2Fheads%2Fmain.zip%22%5D
-```
+在 iPhone 上点这个链接就会交给 Scripting 导入；没反应就**长按复制链接，在 Safari 地址栏打开**。
 
-- GitHub 有时会把 `scripting://` 开头的东西当成普通文本，**长按复制整行，粘到 Safari 地址栏**再打开最稳。
-- 导入源是本仓库的 main 分支 zip（里面只有 `华农表/` 一个带 `script.json` 的脚本）。如果导入后没出现「华农表」，用下面的手动方式。
+包就是个 zip（后缀改成 `.scripting`），里面是 `华农表/` + `script.json`，导入后脚本名显示「华农表」。
+
+> ⚠️ 仓库目前是**私有**的，`raw.githubusercontent.com` 的链接需要登录 GitHub 才能下载；等仓库转公开后这条链接才对所有人可用。
 
 ### 手动安装
 
@@ -101,7 +101,13 @@ scripting://import_scripts?urls=%5B%22https%3A%2F%2Fgithub.com%2Fcondedby%2Fscri
 
 提问时**不要**贴学号、密码、带姓名或班级的课表截图。
 
-## License
+## 版权
 
-[MIT](./LICENSE)
+Copyright (c) 2026 condedby，保留所有权利。
+
+仓库当前**未授权**他人使用、修改或再分发。将来如果放开，会在这里补上明确的开源许可（比如 MIT）和 `LICENSE` 文件。
+
+## 目录补充
+
+`Release/SCAU-Table.scripting` 是给一键导入用的发布包（`华农表/` 打成的 zip，不含 `__preview*.tsx`），不是手写代码。
 
