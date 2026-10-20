@@ -32,6 +32,19 @@
 
 ## 安装
 
+### 一键导入（推荐）
+
+在装好 Scripting 的 iPhone / iPad 上打开这个链接，App 会自动拉取仓库并导入「华农表」：
+
+```
+scripting://import_scripts?urls=%5B%22https%3A%2F%2Fgithub.com%2Fcondedby%2Fscripting%2Farchive%2Frefs%2Fheads%2Fmain.zip%22%5D
+```
+
+- GitHub 有时会把 `scripting://` 开头的东西当成普通文本，**长按复制整行，粘到 Safari 地址栏**再打开最稳。
+- 导入源是本仓库的 main 分支 zip（里面只有 `华农表/` 一个带 `script.json` 的脚本）。如果导入后没出现「华农表」，用下面的手动方式。
+
+### 手动安装
+
 1. 在 iPhone 上装 [Scripting](https://scripting.fun)（需 TestFlight / App Store 版本）
 2. 把 `华农表/` 整个文件夹放进 Scripting 的脚本目录：
    `iCloud Drive › Scripting › scripts › 华农表/`
@@ -79,3 +92,16 @@
 - **课表接口**：正方 jwglxt `POST /jwglxt/xskbcx_cxXsKb.html?gnmkdm=N2151`。
 - **周次怎么算**：优先用学校返回的学期开始日期（`termStart`）在本地推周次；拿不到就用服务端给的当前周 + 抓取时间推算，离线也不会错。
 - **设置即时落盘**：改完立刻写，不依赖「保存」按钮，退出重进不会回滚。
+
+## 免责声明
+
+- 本项目仅供**查询本人课表**使用，不收集、不上传任何账号、密码或课表数据；所有凭据只存在你自己的设备上。
+- 脚本会以你的身份自动填写学校统一身份认证页面。使用前请自行确认这符合你所在学校对信息系统的使用规定；**由此产生的任何后果由使用者自负**。
+- 学校界面 / 接口变更后脚本可能失效，不做可用性保证。
+
+提问时**不要**贴学号、密码、带姓名或班级的课表截图。
+
+## License
+
+[MIT](./LICENSE)
+
