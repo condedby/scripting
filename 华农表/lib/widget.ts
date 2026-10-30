@@ -5,20 +5,25 @@
  * 所以这里只读脚本抓回来的课表缓存，再用「学期起始日 + 今天的日期」在**本地**推算周次。
  * 好处：缓存放上两三周，小组件显示的周次依然是对的；没有网络也照样工作。
  */
+import { flagsFor, type DayFlagMap } from "./calendar"
 import {
   DEFAULT_PERIODS,
-  deepForCourse,
+  deepForEvent,
+  colorForEvent,
   WEEKDAY_NAMES,
-  colorForCourse,
   periodTime,
   type CourseEvent,
   type PeriodTime,
   type ScheduleData,
   type WeekStart,
 } from "./model"
+import { isDark } from "./theme"
 
-/** 脚本主色（= script.json 里的颜色），小组件里当作「今天」的高亮色 */
-export const ACCENT = "#46708F"
+/** 脚本主色（= script.json 里的颜色）
+ * 主色（文字 / 图标 / 描边用）：深色模式换亮一档，否则贴着深色底看不清 */
+export const ACCENT = isDark() ? "#8CC4E6" : "#46708F"
+/** 主色块（上面要放白字）：两套都不能太浅 */
+export const ACCENT_FILL = isDark() ? "#3E6C8C" : "#46708F"
 
 const DAY_MS = 86400000
 
@@ -59,6 +64,10 @@ export interface WidgetDay {
   week: number
   isToday: boolean
   courses: WidgetCourse[]
+  /** 校历上这天放假（非空 = 节日名） */
+  off: string
+  /** 校历上这天是调休上课（按别的星期几的课表） */
+  makeup: boolean
 }
 
 export interface WidgetModel {
@@ -179,15 +188,24 @@ export function stampText(ms: number): string {
 
 // ───────────────────────── 组装 ─────────────────────────
 
-function buildDay(data: ScheduleData, date: Date, periods: PeriodTime[], now: Date): WidgetDay {
+function buildDay(data: ScheduleData, date: Date, periods: PeriodTime[], now: Date, flags?: DayFlagMap): WidgetDay {
   const weekday = isoWeekday(date)
   const week = weekOf(data, date)
   const isToday = midnight(date).getTime() === midnight(now).getTime()
   const nowMin = now.getHours() * 60 + now.getMinutes()
 
-  const events = data.events
-    .filter(e => e.weekday === weekday && (!e.weeks.length || e.weeks.indexOf(week) > -1))
-    .sort((a, b) => a.start - b.start)
+  // 校历优先：放假 → 没课；调休 → 按它指定的那一周、那一天的课表上
+  const flag = flagsFor(flags, date)
+  const off = flag ? flag.off : ""
+  const makeup = !!(flag && flag.makeWeek > 0)
+  const useWeekday = makeup ? flag!.makeWeekday : weekday
+  const useWeek = makeup ? flag!.makeWeek : week
+
+  const events = off
+    ? []
+    : data.events
+        .filter(e => e.weekday === useWeekday && (!e.weeks.length || e.weeks.indexOf(useWeek) > -1))
+        .sort((a, b) => a.start - b.start)
 
   let nextTaken = false
   const courses: WidgetCourse[] = events.map(e => {
@@ -215,8 +233,8 @@ function buildDay(data: ScheduleData, date: Date, periods: PeriodTime[], now: Da
       endMin,
       timeText: a && b ? `${a.start}-${b.end}` : "",
       periodText: e.end > e.start ? `${e.start}-${e.end} 节` : `${e.start} 节`,
-      color: colorForCourse(e.name),
-      deep: deepForCourse(e.name),
+      color: colorForEvent(e),
+      deep: deepForEvent(e),
       state,
     }
   })
@@ -230,6 +248,8 @@ function buildDay(data: ScheduleData, date: Date, periods: PeriodTime[], now: Da
     week,
     isToday,
     courses,
+    off,
+    makeup,
   }
 }
 
@@ -247,10 +267,16 @@ export function startOfDisplayWeek(d: Date, weekStart: WeekStart = 0): Date {
   return addDays(d, -(weekStart === 0 ? wd % 7 : wd - 1))
 }
 
-/** 某一天要上的课（周次按这一天的日期自己算，周日开头时也不会串周） */
-export function eventsOn(data: ScheduleData, date: Date): CourseEvent[] {
-  const wd = isoWeekday(date)
-  const week = weekOf(data, date)
+/**
+ * 某一天要上的课（周次按这一天的日期自己算，周日开头时也不会串周）。
+ * 传了校历标记就以校历为准：放假不上课；调休那天上它指定的那一周、那一天的课。
+ */
+export function eventsOn(data: ScheduleData, date: Date, flags?: DayFlagMap): CourseEvent[] {
+  const flag = flagsFor(flags, date)
+  if (flag && flag.off) return []
+  const makeup = !!(flag && flag.makeWeek > 0)
+  const wd = makeup ? flag!.makeWeekday : isoWeekday(date)
+  const week = makeup ? flag!.makeWeek : weekOf(data, date)
   return data.events
     .filter(e => e.weekday === wd && (!e.weeks.length || e.weeks.indexOf(week) > -1))
     .sort((a, b) => a.start - b.start)
@@ -264,6 +290,10 @@ export interface WeekDayInfo {
   week: number
   isToday: boolean
   events: CourseEvent[]
+  /** 放假（非空 = 节日名） */
+  off: string
+  /** 调休上课 */
+  makeup: boolean
 }
 
 /**
@@ -275,17 +305,21 @@ export function weekWindow(
   week: number,
   weekStart: WeekStart = 0,
   now: Date = new Date(),
+  flags?: DayFlagMap,
 ): WeekDayInfo[] {
   const first = startOfDisplayWeek(weekMonday(data, week, now), weekStart)
   const todayTime = midnight(now).getTime()
   return [0, 1, 2, 3, 4, 5, 6].map(i => {
     const date = addDays(first, i)
+    const flag = flagsFor(flags, date)
     return {
       date,
       weekday: isoWeekday(date),
       week: weekOf(data, date),
       isToday: midnight(date).getTime() === todayTime,
-      events: eventsOn(data, date),
+      events: eventsOn(data, date, flags),
+      off: flag ? flag.off : "",
+      makeup: !!(flag && flag.makeWeek > 0),
     }
   })
 }
@@ -306,20 +340,22 @@ export function buildWidgetModel(
   periods: PeriodTime[] = DEFAULT_PERIODS,
   showTime = true,
   weekStart: WeekStart = 0,
+  flags?: DayFlagMap,
 ): WidgetModel {
-  const today = buildDay(data, now, periods, now)
+  const today = buildDay(data, now, periods, now, flags)
 
   // 大号：显示周（weekStart = 0 时从周日开头）
   const first = startOfDisplayWeek(now, weekStart)
   const days: WidgetDay[] = []
-  for (let i = 0; i < 7; i++) days.push(buildDay(data, addDays(first, i), periods, now))
+  for (let i = 0; i < 7; i++) days.push(buildDay(data, addDays(first, i), periods, now, flags))
 
   // 小号 / 中号：今天的课没上完就显示今天；上完了就显示**第二天**（如果第二天也没课，
   // 就写「明天没有课」+ 下一次有课的提示，而不是跳过去找下一个有课的日子）
   let focus = today
   let focusOffset = 0
-  if (!hasRemaining(today)) {
-    focus = buildDay(data, addDays(now, 1), periods, now)
+  // 今天放假就别顺延到明天了：直接写「今天放假（国庆）」
+  if (!hasRemaining(today) && !today.off) {
+    focus = buildDay(data, addDays(now, 1), periods, now, flags)
     focusOffset = 1
   }
 
@@ -330,7 +366,7 @@ export function buildWidgetModel(
   let nextClassText = ""
   if (focusCourses.length === 0) {
     for (let i = 1; i <= 8; i++) {
-      const d = buildDay(data, addDays(now, focusOffset + i), periods, now)
+      const d = buildDay(data, addDays(now, focusOffset + i), periods, now, flags)
       if (d.courses.length) {
         nextClassText = `${d.label} ${d.dateLabel} · ${d.courses.length} 门课`
         break

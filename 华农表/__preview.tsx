@@ -61,7 +61,9 @@ function mockData(): ScheduleData {
     },
     events,
     maxSession: 14,
-    currentWeek: 3,
+    // 选第 6 周：这一周有国庆放假（10/5-7）和调休（10/10），方便看校历叠加效果
+    currentWeek: 6,
+    termStart: "2026-08-31",
   }
 }
 

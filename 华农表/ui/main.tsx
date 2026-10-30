@@ -1,6 +1,7 @@
 /** 华农课表 —— 主页面（周课表，马卡龙风格） */
 import {
   Button,
+  Device,
   HStack,
   Image,
   Menu,
@@ -20,8 +21,7 @@ import {
   INK,
   MUTED,
   PILL,
-  colorForCourse,
-  deepForCourse,
+  colorForEvent,
   parseSchedule,
   periodTime,
   shortRoom,
@@ -30,8 +30,13 @@ import {
   type ScheduleData,
 } from "../lib/model"
 import { fetchScheduleRaw } from "../lib/session"
+import { loadCalendarCache, saveCalendarCache } from "../lib/store"
+import { buildDayFlags, fetchAcademicCalendar, parseISODate, termForDate, type AcademicCalendar } from "../lib/calendar"
+import { applyOverrides, loadOverrides, type Overrides } from "../lib/overrides"
 import { loadCache, loadSettings, saveCache, type Settings } from "../lib/store"
-import { ACCENT, buildWidgetModel, midnight, shortName, weekMonday, weekWindow } from "../lib/widget"
+import { greenFill, greenText, orangeFill, orangeText, surface } from "../lib/theme"
+import { ACCENT, ACCENT_FILL, buildWidgetModel, midnight, shortName, weekMonday, weekWindow } from "../lib/widget"
+import { CalendarView } from "./calendar"
 import { CourseDetailView } from "./course"
 import { SettingsView } from "./settings"
 
@@ -39,8 +44,19 @@ const ROW_H = 52
 const GAP = 3
 const GUTTER = 34
 
+// 课表格子宽度写死：之前每列都用 maxWidth:"infinity"，各列会按内容各自伸缩，
+// 课程气泡一列宽一列窄。这里按屏幕宽度算出统一的列宽，七天永远一样宽。
+const PAGE_PAD = 10 // 页面左右留白
+const CARD_PAD = 6 // 课表白卡内边距
+const COL_W = Math.floor(((Device.screen.width - PAGE_PAD * 2 - CARD_PAD * 2 - GUTTER - 1 - GAP * 8) / 7) * 100) / 100
+
 const WD_EN = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-const EMPTY = "rgba(120,120,128,0.06)"
+// 校历：放假 = 绿、调休上课 = 橙（两套色，见 lib/theme）
+const GREEN_BG = greenFill()
+const GREEN_FG = greenText()
+const ORANGE_BG = orangeFill()
+const ORANGE_FG = orangeText()
+const EMPTY = surface(0.045)
 const RED = "#FF3B30"
 const R_PILL = { type: "rect", cornerRadius: 9 } as any
 const R_CARD = { type: "rect", cornerRadius: 16 } as any
@@ -90,6 +106,68 @@ function RoomPill({ room }: { room: string }) {
   )
 }
 
+/** 学期进度条：第几周 / 共几周 + 一条进度 + 还剩几天 */
+function SemesterProgress({ data, calendar }: { data: ScheduleData; calendar: AcademicCalendar | null }) {
+  const now = new Date()
+  const term = termForDate(calendar, now)
+  let startISO = data.termStart || ""
+  const w1 = term ? term.weeks.find(w => w.week === 1) : undefined
+  if (w1) startISO = w1.monday
+  if (!startISO) return null
+  const start = parseISODate(startISO)
+  const weeks = Math.max(1, term?.teachingWeeks || 20)
+  const total = weeks * 7
+  const elapsed = Math.floor((midnight(now).getTime() - start.getTime()) / 86400000) + 1
+  const done = Math.max(0, Math.min(total, elapsed))
+  const pct = Math.max(0, Math.min(100, Math.round((done / total) * 100)))
+  const left = Math.max(0, total - done)
+  const weekNow = Math.max(1, Math.min(weeks, Math.ceil(Math.max(1, done) / 7)))
+  const barW = Math.round(Device.screen.width - PAGE_PAD * 2 - 28)
+  const fillW = Math.max(6, Math.round((barW * pct) / 100))
+  const endText = `${start.getMonth() + 1}/${start.getDate()}`
+
+  return (
+    <Card>
+      <HStack spacing={6}>
+        <Image systemName="chart.bar.fill" font={12} foregroundStyle={ACCENT as any} />
+        <Text font={13} fontWeight="heavy">
+          学期进度
+        </Text>
+        <Spacer />
+        <Text font={13} fontWeight="bold" foregroundStyle={ACCENT as any}>
+          第 {weekNow} / {weeks} 周
+        </Text>
+      </HStack>
+      <HStack
+        spacing={0}
+        frame={{ width: barW, height: 8 }}
+        background={"rgba(120,120,128,0.16)" as any}
+        clipShape={{ type: "rect", cornerRadius: 4 } as any}
+      >
+        <VStack frame={{ width: fillW, height: 8 }} background={ACCENT as any} />
+        <Spacer />
+      </HStack>
+      <HStack>
+        <Text font={10} foregroundStyle="tertiaryLabel">
+          {endText} 开学 · 共 {total} 天
+        </Text>
+        <Spacer />
+        <Text font={10} foregroundStyle="tertiaryLabel">
+          已过 {pct}% · {left ? `还有 ${left} 天` : "已到假期"}
+        </Text>
+      </HStack>
+    </Card>
+  )
+}
+
+/**
+ * 已经上完的课：整块降不透明度（原来那套观感）。
+ * 气泡底是马卡龙浅色，40% 叠在深色卡上仍然是中间调，文字继续用深色也看得清。
+ */
+function dimStyle(dim: boolean): { bg: string; opacity: number; fg: any; fg2: any } {
+  return { bg: "", opacity: dim ? 0.4 : 1, fg: INK, fg2: MUTED }
+}
+
 function CourseBlock({
   event,
   span,
@@ -102,23 +180,24 @@ function CourseBlock({
   onPick: (e: CourseEvent) => void
 }) {
   const height = span * ROW_H + (span - 1) * GAP
+  const st = dimStyle(dim)
   return (
     <VStack
       spacing={3}
       alignment="leading"
       padding={{ horizontal: 4, vertical: 5 }}
-      frame={{ maxWidth: "infinity", height }}
-      background={colorForCourse(event.name) as any}
+      frame={{ width: COL_W, height }}
+      background={(st.bg || colorForEvent(event)) as any}
       clipShape={R_BLOCK}
-      opacity={dim ? 0.4 : 1}
+      opacity={st.opacity}
       onTapGesture={() => onPick(event)}
     >
-      <Text font={11} fontWeight="heavy" foregroundStyle={INK as any} lineLimit={span >= 3 ? 6 : 3} minScaleFactor={0.7}>
+      <Text font={11} fontWeight="heavy" foregroundStyle={st.fg} lineLimit={span >= 3 ? 6 : 3} minScaleFactor={0.7}>
         {shortName(event.name)}
       </Text>
       <RoomPill room={event.room} />
       {span >= 2 && event.teacher ? (
-        <Text font={9} foregroundStyle={MUTED as any} lineLimit={2} minScaleFactor={0.7}>
+        <Text font={9} foregroundStyle={st.fg2} lineLimit={2} minScaleFactor={0.7}>
           {event.teacher}
         </Text>
       ) : null}
@@ -152,7 +231,7 @@ function DayColumn({
       cells.push(
         <VStack
           key={"gap" + s}
-          frame={{ maxWidth: "infinity", height: ROW_H }}
+          frame={{ width: COL_W, height: ROW_H }}
           background={EMPTY as any}
           clipShape={{ type: "rect", cornerRadius: 8 } as any}
         />
@@ -163,7 +242,7 @@ function DayColumn({
   return (
     <VStack
       spacing={GAP}
-      frame={{ maxWidth: "infinity" }}
+      frame={{ width: COL_W }}
       overlay={isToday ? <RoundedRectangle cornerRadius={11} stroke={RED as any} /> : undefined}
     >
       {cells}
@@ -173,11 +252,17 @@ function DayColumn({
 
 export function MainView() {
   const [settings, setSettings] = useState<Settings>(loadSettings())
-  const [data, setData] = useState<ScheduleData | null>(loadCache())
+  const [raw, setRaw] = useState<ScheduleData | null>(loadCache())
+  const [overrides, setOverrides] = useState<Overrides>(() => loadOverrides())
+  const [calendar, setCalendar] = useState(() => loadCalendarCache())
   const [week, setWeek] = useState<number>(0)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState("")
   const [error, setError] = useState("")
+
+  // 屏幕上显示的课表 = 教务缓存 + 本机自定义；放假 / 调休以校历为准
+  const data = raw ? applyOverrides(raw, overrides, termForDate(calendar, new Date())?.key) : null
+  const flags = buildDayFlags(calendar)
 
   const currentWeek = data?.currentWeek || 0
   const curWeek = week || currentWeek || 1
@@ -203,7 +288,7 @@ export function MainView() {
       })
       const parsed = parseSchedule(res.raw)
       saveCache(parsed)
-      setData(parsed)
+      setRaw(parsed)
       setWeek(parsed.currentWeek || 1)
       setStatus("")
       // 顺手把主屏小组件也刷一遍（课表变了）
@@ -229,9 +314,10 @@ export function MainView() {
         }}
         onChanged={() => {
           setSettings(loadSettings())
+          setOverrides(loadOverrides())
           setError("")
           const c = loadCache()
-          setData(c)
+          setRaw(c)
           if (!c) setWeek(0)
           // 设置（比如「显示上下课时间」）也会影响小组件
           try {
@@ -244,6 +330,21 @@ export function MainView() {
     )
   }
 
+  function openCalendar() {
+    void Navigation.present(
+      <CalendarView
+        currentWeek={curWeek}
+        onPickWeek={w => {
+          setWeek(w)
+        }}
+      />,
+    ).then(() => {
+      // 校历页可能刚拓了一次新数据，回来重新读一下（放假 / 调休跟着变）
+      const c = loadCalendarCache()
+      if (c) setCalendar(c)
+    })
+  }
+
   function openCourse(event: CourseEvent) {
     if (!data) return
     void Navigation.present(
@@ -253,6 +354,7 @@ export function MainView() {
         week={curWeek}
         weekStart={settings.weekStart}
         periods={settings.periods}
+        flags={flags}
       />,
     )
   }
@@ -260,12 +362,26 @@ export function MainView() {
   useEffect(() => {
     const cached = loadCache()
     if (!cached && loadSettings().username) void refresh()
+    // 没校历就先后台抓一份：放假 / 调休要靠它（抓不到也不影响看课表）
+    if (!loadCalendarCache()) {
+      fetchAcademicCalendar()
+        .then(cal => {
+          saveCalendarCache(cal)
+          setCalendar(cal)
+          try {
+            Widget.reloadAll()
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch(() => {})
+    }
   }, [])
 
   // 本周七天的日期（顶部日期条与网格列都用它）；顺序由「每周从周日开始」设置决定
   const now = new Date()
   const monday = data ? weekMonday(data, curWeek, now) : midnight(now)
-  const weekDays = data ? weekWindow(data, curWeek, settings.weekStart, now) : []
+  const weekDays = data ? weekWindow(data, curWeek, settings.weekStart, now, flags) : []
   const todayTime = midnight(now).getTime()
   const nowMin = now.getHours() * 60 + now.getMinutes()
   /** 这节课在 date 那天是否已经结束（过去的日子整天算结束） */
@@ -278,7 +394,7 @@ export function MainView() {
     return m ? nowMin >= parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : false
   }
   // 今日卡片：今天的课全上完（或今天没课）就顺延显示下一个有课的日子
-  const wm = data ? buildWidgetModel(data, now, settings.periods, settings.showTime, settings.weekStart) : null
+  const wm = data ? buildWidgetModel(data, now, settings.periods, settings.showTime, settings.weekStart, flags) : null
   const maxWeek = Math.max(20, currentWeek, curWeek)
   const weekChoices = Array.from({ length: maxWeek }, (_, i) => i + 1)
 
@@ -292,6 +408,12 @@ export function MainView() {
               华农表
             </Text>
             <Spacer />
+            <Capsule onTap={openCalendar}>
+              <Image systemName="calendar" font={13} foregroundStyle={ACCENT as any} />
+              <Text font={14} fontWeight="semibold">
+                校历
+              </Text>
+            </Capsule>
             <Capsule onTap={() => void refresh()}>
               <Image systemName="arrow.clockwise" font={13} foregroundStyle={ACCENT as any} />
               <Text font={14} fontWeight="semibold">
@@ -345,6 +467,20 @@ export function MainView() {
                     <Text font={16} fontWeight="heavy">
                       {wm.focusLabel}
                     </Text>
+                    {wm.focus.off ? (
+                      <HStack padding={{ horizontal: 6, vertical: 1 }} background={"rgba(52,168,108,0.16)" as any} clipShape={R_PILL}>
+                        <Text font={10} fontWeight="bold" foregroundStyle={"#1F7A4C" as any}>
+                          放假
+                        </Text>
+                      </HStack>
+                    ) : null}
+                    {wm.focus.makeup ? (
+                      <HStack padding={{ horizontal: 6, vertical: 1 }} background={ORANGE_BG as any} clipShape={R_PILL}>
+                        <Text font={10} fontWeight="bold" foregroundStyle={"#A96400" as any}>
+                          调休上课
+                        </Text>
+                      </HStack>
+                    ) : null}
                     <Text font={12} foregroundStyle="secondaryLabel">
                       {wm.focus.label} {wm.focus.dateLabel} · 第 {wm.focus.week} 周
                     </Text>
@@ -355,41 +491,55 @@ export function MainView() {
                   </HStack>
                   {wm.focusCourses.length === 0 ? (
                     <Text font={13} foregroundStyle="secondaryLabel">
-                      {wm.focusOffset === 1 ? "明天没有课" : wm.todayFinished ? "今天的课都上完了" : "今天没有课"}
+                      {wm.focus.off
+                        ? `${wm.focusOffset === 1 ? "明天" : "今天"}放假（${wm.focus.off}）`
+                        : wm.focusOffset === 1
+                          ? "明天没有课"
+                          : wm.todayFinished
+                            ? "今天的课都上完了"
+                            : "今天没有课"}
                       {wm.nextClassText ? ` · 下次有课 ${wm.nextClassText}` : ""}
                     </Text>
                   ) : null}
-                  {wm.focusCourses.map(c => (
+                  {wm.focusCourses.map(c => {
+                    const st = dimStyle(c.state === "done")
+                    return (
                     <HStack
                       key={c.key}
                       spacing={10}
                       padding={{ horizontal: 10, vertical: 8 }}
                       frame={{ maxWidth: "infinity" }}
-                      background={c.color as any}
+                      background={(st.bg || c.color) as any}
                       clipShape={R_BLOCK}
-                      opacity={c.state === "done" ? 0.4 : 1}
+                      opacity={st.opacity}
                       onTapGesture={() => {
                         const ev = data.events.find(x => x.key === c.key)
                         if (ev) openCourse(ev)
                       }}
                     >
                       <VStack spacing={0} frame={{ width: 62, alignment: "leading" }}>
-                        <Text font={14} fontWeight="heavy" monospacedDigit foregroundStyle={INK as any}>
+                        <Text font={14} fontWeight="heavy" monospacedDigit foregroundStyle={st.fg}>
                           {c.start}-{c.end} 节
                         </Text>
                         {settings.showTime ? (
-                          <Text font={9} foregroundStyle={MUTED as any}>
+                          <Text font={9} foregroundStyle={st.fg2}>
                             {c.timeText}
                           </Text>
                         ) : null}
                       </VStack>
                       <VStack spacing={3} alignment="leading" frame={{ maxWidth: "infinity" }}>
-                        <Text font={15} fontWeight="heavy" foregroundStyle={INK as any} lineLimit={1} minScaleFactor={0.7}>
+                        <Text
+                          font={15}
+                          fontWeight="heavy"
+                          foregroundStyle={st.fg}
+                          lineLimit={1}
+                          minScaleFactor={0.7}
+                        >
                           {c.name}
                         </Text>
                         <HStack spacing={6}>
                           <RoomPill room={c.room || "地点待定"} />
-                          <Text font={11} foregroundStyle={MUTED as any} lineLimit={1}>
+                          <Text font={11} foregroundStyle={st.fg2} lineLimit={1}>
                             {c.teacher || "教师待定"}
                           </Text>
                         </HStack>
@@ -400,9 +550,12 @@ export function MainView() {
                         foregroundStyle={c.deep as any}
                       />
                     </HStack>
-                  ))}
+                    )
+                  })}
                 </Card>
               ) : null}
+
+              <SemesterProgress data={data} calendar={calendar} />
 
               {/* 月份 / 周次 */}
               <HStack spacing={8}>
@@ -448,23 +601,26 @@ export function MainView() {
 
               {/* 日期条（左边留出与网格完全一致的序号线宽度，列才对得齐） */}
               <HStack spacing={GAP} padding={{ horizontal: 6 }}>
-                <VStack frame={{ width: GUTTER + GAP * 2 + 1 }} />
+                <VStack frame={{ width: GUTTER + GAP + 1 }} />
                 {weekDays.map(day => {
                   const isToday = day.isToday
+                  // 校历：放假 = 绿、调休上课 = 橙（今天永远用主色）
+                  const bg = isToday ? ACCENT_FILL : day.off ? GREEN_BG : day.makeup ? ORANGE_BG : "secondarySystemGroupedBackground"
+                  const fg = isToday ? "white" : day.off ? GREEN_FG : day.makeup ? ORANGE_FG : "label"
                   return (
                     <VStack
                       key={"h" + day.weekday}
                       spacing={1}
                       padding={{ vertical: 7 }}
-                      frame={{ maxWidth: "infinity" }}
-                      background={(isToday ? ACCENT : "secondarySystemGroupedBackground") as any}
+                      frame={{ width: COL_W }}
+                      background={bg as any}
                       clipShape={{ type: "rect", cornerRadius: 12 } as any}
                     >
                       <Text
                         font={16}
                         fontWeight="heavy"
                         monospacedDigit
-                        foregroundStyle={(isToday ? "white" : INK) as any}
+                        foregroundStyle={fg as any}
                         lineLimit={1}
                         minScaleFactor={0.7}
                       >
@@ -473,11 +629,11 @@ export function MainView() {
                       <Text
                         font={8}
                         fontWeight="semibold"
-                        foregroundStyle={(isToday ? "rgba(255,255,255,0.85)" : "secondaryLabel") as any}
+                        foregroundStyle={(isToday ? "rgba(255,255,255,0.85)" : day.off || day.makeup ? fg : "secondaryLabel") as any}
                         lineLimit={1}
                         minScaleFactor={0.7}
                       >
-                        {WD_EN[day.weekday - 1]}
+                        {day.off ? "放假" : day.makeup ? "调休" : WD_EN[day.weekday - 1]}
                       </Text>
                     </VStack>
                   )
@@ -494,7 +650,7 @@ export function MainView() {
                 <VStack spacing={GAP} frame={{ width: GUTTER }}>
                   {Array.from({ length: data.maxSession }, (_, n) => n + 1).map(n => (
                     <VStack key={"n" + n} spacing={0} frame={{ height: ROW_H }}>
-                      <Text font={18} fontWeight="heavy" foregroundStyle={INK as any}>
+                      <Text font={18} fontWeight="heavy" foregroundStyle="label">
                         {n}
                       </Text>
                       {settings.showTime ? (

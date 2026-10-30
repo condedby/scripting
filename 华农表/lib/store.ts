@@ -4,6 +4,7 @@
  * 账号密码只存在本机：学号用 Storage，密码用 Keychain（仅在勾选「记住密码」时保存）。
  * 课表缓存用 Storage 存 JSON。
  */
+import { CALENDAR_SCHEMA, type AcademicCalendar } from "./calendar"
 import { DEFAULT_PERIODS, type PeriodTime, type ScheduleData, type WeekStart } from "./model"
 
 const K_USERNAME = "scau.username"
@@ -13,6 +14,7 @@ const K_PERIODS = "scau.periods"
 const K_SHOW_TIME = "scau.showTime"
 const K_WEEK_START = "scau.weekStart"
 const K_CACHE = "scau.cache"
+const K_CALENDAR = "scau.calendar"
 
 export interface Settings {
   username: string
@@ -85,4 +87,24 @@ export function saveCache(data: ScheduleData): void {
 
 export function clearCache(): void {
   Storage.remove(K_CACHE)
+}
+
+// ───────────────────────────── 校历缓存 ─────────────────────────────
+
+/** 校历（教务处那张 xlsx 解出来的；一张表半年才换一次，缓存起来别每次重抓） */
+export function loadCalendarCache(): AcademicCalendar | null {
+  const raw = Storage.get<string>(K_CALENDAR)
+  if (!raw) return null
+  try {
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw
+    if (!data || !Array.isArray(data.terms) || !data.terms.length) return null
+    if (data.schema !== CALENDAR_SCHEMA) return null
+    return data as AcademicCalendar
+  } catch {
+    return null
+  }
+}
+
+export function saveCalendarCache(data: AcademicCalendar): void {
+  Storage.set(K_CALENDAR, JSON.stringify(data))
 }

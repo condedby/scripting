@@ -150,7 +150,13 @@ function LineRow({ c }: { c: WidgetCourse }) {
 }
 
 function NothingToday({ model }: { model: WidgetModel }) {
-  const title = model.focusOffset === 1 ? "明天没有课" : model.todayFinished ? "今天的课都上完了" : "今天没有课"
+  const title = model.focus.off
+    ? `${model.focusOffset === 1 ? "明天" : "今天"}放假（${model.focus.off}）`
+    : model.focusOffset === 1
+      ? "明天没有课"
+      : model.todayFinished
+        ? "今天的课都上完了"
+        : "今天没有课"
   return (
     <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
       <Spacer />

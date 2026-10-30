@@ -10,7 +10,9 @@
  * 这样最后一节课上完它会自己翻到第二天（iOS 会按自己的预算延后，属正常现象）。
  */
 import { Script, VStack, Widget } from "scripting"
-import { loadCache, loadSettings } from "./lib/store"
+import { buildDayFlags, termForDate } from "./lib/calendar"
+import { applyOverrides, loadOverrides } from "./lib/overrides"
+import { loadCache, loadCalendarCache, loadSettings } from "./lib/store"
 import { buildWidgetModel } from "./lib/widget"
 import {
   EmptyWidget,
@@ -55,7 +57,9 @@ function present(node: any, wake: number) {
 function run() {
   const family = String(Widget.family)
   const size = sizeOf()
-  const cache = loadCache()
+  const base = loadCache()
+  const cal = loadCalendarCache()
+  const cache = base ? applyOverrides(base, loadOverrides(), termForDate(cal, new Date())?.key) : null
 
   const lock = family.indexOf("accessory") === 0
 
@@ -72,7 +76,14 @@ function run() {
   }
 
   const settings = loadSettings()
-  const model = buildWidgetModel(cache, new Date(), undefined, settings.showTime, settings.weekStart)
+  const model = buildWidgetModel(
+    cache,
+    new Date(),
+    undefined,
+    settings.showTime,
+    settings.weekStart,
+    buildDayFlags(cal),
+  )
 
   if (family === "accessoryRectangular") {
     present(<LockRectWidget model={model} />, model.nextWake)

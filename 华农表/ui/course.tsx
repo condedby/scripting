@@ -29,8 +29,8 @@ import {
   MUTED,
   PILL,
   WEEKDAY_FULL,
-  colorForCourse,
-  deepForCourse,
+  colorForEvent,
+  deepForEvent,
   formatWeeks,
   periodTime,
   shortRoom,
@@ -40,12 +40,17 @@ import {
   type ScheduleData,
   type WeekStart,
 } from "../lib/model"
+import type { DayFlagMap } from "../lib/calendar"
+import { isDark, onDark, surface } from "../lib/theme"
 import { ACCENT, shortName, tint, weekWindow } from "../lib/widget"
 
 const MGAP = 3
 const MROW = 30
 const GUTTER = 18
-const EMPTY = "rgba(120,120,128,0.10)"
+// 小课表的空格子：**跟正式版一模一样写死 10% 灰**。
+// 用主题的 surface() 会在深色下自动加倍（0.10 → 0.24）→ 满屏亮灰方块（用户明确不要）。
+const MCELL = "rgba(120,120,128,0.10)"
+const EMPTY = surface(0.10)
 const R_CARD = { type: "rect", cornerRadius: 16 } as any
 const R_BLOCK = { type: "rect", cornerRadius: 8 } as any
 const R_CHIP = { type: "rect", cornerRadius: 9 } as any
@@ -80,8 +85,8 @@ function sessionTime(periods: PeriodTime[], start: number, end: number): string 
 function Chip({ text, color }: { text: string; color: string }) {
   if (!text) return null
   return (
-    <HStack padding={{ horizontal: 8, vertical: 4 }} background={tint(color, 0.18)} clipShape={R_CHIP}>
-      <Text font={11} fontWeight="semibold" foregroundStyle={color as any} lineLimit={1} minScaleFactor={0.7}>
+    <HStack padding={{ horizontal: 8, vertical: 4 }} background={tint(color, isDark() ? 0.30 : 0.18)} clipShape={R_CHIP}>
+      <Text font={11} fontWeight="semibold" foregroundStyle={(isDark() ? onDark(color) : color) as any} lineLimit={1} minScaleFactor={0.7}>
         {text}
       </Text>
     </HStack>
@@ -120,15 +125,17 @@ function MiniBlock({
   onPick: (e: CourseEvent) => void
 }) {
   const height = span * MROW + (span - 1) * MGAP
+  // ⚠️ 这一段是照抄正式版 `scripts/华农表/ui/course.tsx` 的 MiniBlock：
+  //    非本课 = 10% 色的**淡到几乎看不见的一格**，不写字、不描边；别自己改成细长条/方块。
   return (
     <VStack
       spacing={2}
       alignment="leading"
       padding={{ horizontal: 3, vertical: 2 }}
       frame={{ maxWidth: "infinity", height }}
-      background={(hot ? colorForCourse(c.name) : tint(deepForCourse(c.name), 0.10)) as any}
+      background={(hot ? colorForEvent(c) : tint(deepForEvent(c), 0.10)) as any}
       clipShape={R_BLOCK}
-      overlay={selected ? <RoundedRectangle cornerRadius={8} stroke={deepForCourse(c.name) as any} /> : undefined}
+      overlay={selected ? <RoundedRectangle cornerRadius={8} stroke={deepForEvent(c) as any} /> : undefined}
       onTapGesture={hot ? () => onPick(c) : undefined}
     >
       <Text
@@ -152,8 +159,8 @@ function MiniBlock({
   )
 }
 
-/** 周次条：上这门课的周次点亮，本周加圈 */
-function WeekBars({
+/** 周次条：上这门课的周次点亮，本周用主色描边 + 主色数字 */
+export function WeekBars({
   weeks,
   maxWeek,
   currentWeek,
@@ -172,19 +179,18 @@ function WeekBars({
     <HStack spacing={2} frame={{ maxWidth: "infinity" }} alignment="top">
       {list.map(w => {
         const on = weeks.indexOf(w) > -1
+        const cur = w === currentWeek
+        // 本周直接换填充色（不用描边）：这门课上的周 = 课程色，本周 = 主色蓝
         return (
           <VStack key={"w" + w} spacing={4} frame={{ maxWidth: "infinity" }}>
-            <VStack
-              frame={{ maxWidth: "infinity", height: 22 }}
-              overlay={w === currentWeek ? <RoundedRectangle cornerRadius={3} stroke={INK as any} /> : undefined}
-            >
-              <RoundedRectangle cornerRadius={3} fill={(on ? color : EMPTY) as any} />
+            <VStack frame={{ maxWidth: "infinity", height: 22 }}>
+              <RoundedRectangle cornerRadius={3} fill={(cur ? ACCENT : on ? color : EMPTY) as any} />
             </VStack>
             <Text
               font={7}
-              fontWeight={w === currentWeek ? "heavy" : "medium"}
+              fontWeight={cur ? "heavy" : "medium"}
               monospacedDigit
-              foregroundStyle={(w === currentWeek ? INK : "tertiaryLabel") as any}
+              foregroundStyle={(cur ? ACCENT : on ? "secondaryLabel" : "tertiaryLabel") as any}
               lineLimit={1}
               minScaleFactor={0.5}
             >
@@ -203,12 +209,14 @@ export function CourseDetailView({
   week,
   weekStart = 0,
   periods = DEFAULT_PERIODS,
+  flags,
 }: {
   event: CourseEvent
   data: ScheduleData
   week: number
   weekStart?: WeekStart
   periods?: PeriodTime[]
+  flags?: DayFlagMap
 }) {
   const dismiss = Navigation.useDismiss()
   const [picked, setPicked] = useState<string>(event.key)
@@ -220,7 +228,7 @@ export function CourseDetailView({
   const cur = sessions.find(s => s.key === picked) || event
   const hotKeys = sessions.map(s => s.key)
 
-  const days = weekWindow(data, week, weekStart)
+  const days = weekWindow(data, week, weekStart, new Date(), flags)
 
   // 小课表只画用得到的节次范围（这门课 + 本周其它课）
   let minRow = cur.start
@@ -242,7 +250,7 @@ export function CourseDetailView({
     return Array.from(set).sort((a, b) => a - b)
   })()
   const maxWeek = Math.min(30, Math.max(20, week, weeks.length ? Math.max(...weeks) : 0))
-  const deep = deepForCourse(event.name)
+  const deep = deepForEvent(event)
 
   return (
     <NavigationStack>
@@ -262,10 +270,10 @@ export function CourseDetailView({
           {/* 1. 大标题卡片 */}
           <Card>
             <VStack spacing={5} alignment="leading" frame={{ maxWidth: "infinity", alignment: "leading" }}>
-              <Text font={22} fontWeight="heavy" foregroundStyle={INK as any} lineLimit={2} minScaleFactor={0.7}>
+              <Text font={22} fontWeight="heavy" foregroundStyle="label" lineLimit={2} minScaleFactor={0.7}>
                 {shortName(event.name)}
               </Text>
-              <Text font={13} foregroundStyle={MUTED as any} lineLimit={1} minScaleFactor={0.75}>
+              <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1} minScaleFactor={0.75}>
                 {[cur.teacher || "教师待定", shortRoom(cur.room) || "地点待定", cur.campus].filter(Boolean).join(" · ")}
               </Text>
             </VStack>
@@ -299,10 +307,10 @@ export function CourseDetailView({
                   spacing={1}
                   padding={{ vertical: 5 }}
                   frame={{ maxWidth: "infinity" }}
-                  background={(d.isToday ? tint(ACCENT, 0.16) : EMPTY) as any}
+                  background={(d.isToday ? tint(ACCENT, 0.16) : MCELL) as any}
                   clipShape={{ type: "rect", cornerRadius: 10 } as any}
                 >
-                  <Text font={12} fontWeight="heavy" monospacedDigit foregroundStyle={(d.isToday ? ACCENT : INK) as any} lineLimit={1} minScaleFactor={0.7}>
+                  <Text font={12} fontWeight="heavy" monospacedDigit foregroundStyle={(d.isToday ? ACCENT : "label") as any} lineLimit={1} minScaleFactor={0.7}>
                     {d.date.getDate()}
                   </Text>
                   <Text font={7} fontWeight="semibold" foregroundStyle={(d.isToday ? ACCENT : "secondaryLabel") as any} lineLimit={1} minScaleFactor={0.7}>
@@ -349,7 +357,7 @@ export function CourseDetailView({
                       <VStack
                         key={"g" + s}
                         frame={{ maxWidth: "infinity", height: MROW }}
-                        background={EMPTY as any}
+                        background={MCELL as any}
                         clipShape={{ type: "rect", cornerRadius: 6 } as any}
                       />,
                     )
@@ -382,14 +390,14 @@ export function CourseDetailView({
                     key={s.key}
                     spacing={4}
                     padding={{ horizontal: 9, vertical: 5 }}
-                    background={(on ? deep : tint(deep, 0.16)) as any}
+                    background={(on ? deep : tint(deep, isDark() ? 0.30 : 0.16)) as any}
                     clipShape={R_CHIP}
                     onTapGesture={() => setPicked(s.key)}
                   >
                     <Text
                       font={12}
                       fontWeight="heavy"
-                      foregroundStyle={(on ? "white" : deep) as any}
+                      foregroundStyle={(on ? "white" : isDark() ? onDark(deep) : deep) as any}
                       lineLimit={1}
                       minScaleFactor={0.7}
                     >
@@ -425,6 +433,9 @@ export function CourseDetailView({
             <Text font={11} foregroundStyle="secondaryLabel" lineLimit={2}>
               {formatWeeks(weeks)}
               {cur.weekText && cur.weekText.replace(/\s/g, "") !== formatWeeks(weeks).replace(/\s/g, "") ? `（原文：${cur.weekText}）` : ""}
+            </Text>
+            <Text font={10} foregroundStyle="tertiaryLabel">
+              蓝色那一格是第 {week} 周（本周）
             </Text>
           </Card>
 

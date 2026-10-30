@@ -16,6 +16,7 @@ import {
   useState,
 } from "scripting"
 import { logoutSession, openLoginPage } from "../lib/session"
+import { ScheduleEditor } from "./editor"
 import { type WeekStart } from "../lib/model"
 import {
   clearCache,
@@ -213,7 +214,7 @@ export function SettingsView({
               : "改动会自动保存。「记住密码」未开启，只保存学号，密码不会写进钥匙串。"}
           </Text>
           <Button title="保存并获取课表" action={doLogin} />
-          <Button title="手动登录（打开网页）" action={() => void doManualLogin()} />
+          <Button title="网页登陆" action={() => void doManualLogin()} />
         </Section>
 
         <Section title="显示">
@@ -232,17 +233,27 @@ export function SettingsView({
           </Text>
         </Section>
 
+        <Section title="课表">
+          <Button
+            title="自定义课表…"
+            action={() => void Navigation.present(<ScheduleEditor onChanged={() => onChanged?.()} />)}
+          />
+          <Text font={NOTE} foregroundStyle="secondaryLabel">
+            可以改课名 / 时间 / 地点，删掉某门课，或者在空白课表上点格子自己加课；「恢复教务课表」一键回到学校给的原样。
+          </Text>
+        </Section>
+
         <Section title="数据">
           <Button
-            title="清除课表缓存（保留登录状态）"
+            title="清除课表缓存"
             action={() => {
               clearCache()
-              setNote("课表缓存已清除（登录状态不变）")
+              setNote("课表缓存已清除")
               onChanged?.()
             }}
           />
           <Button
-            title={confirmLogout ? "再点一次确认退出登录" : "退出登录（清账号、清缓存并下线）"}
+            title={confirmLogout ? "再点一次确认退出登录" : "退出登录"}
             action={() => {
               if (!confirmLogout) {
                 setConfirmLogout(true)

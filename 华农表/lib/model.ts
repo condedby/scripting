@@ -4,6 +4,7 @@
  * 数据来源：正方教务（jwzf.scau.edu.cn）学生课表接口
  * 原始字段：kbList[] 一门课可能拆成多条（不同周次 / 不同教室）
  */
+import { isDark } from "./theme"
 
 export interface StudentInfo {
   name: string
@@ -38,6 +39,8 @@ export interface CourseEvent {
   category: string
   classGroup: string
   examType: string
+  /** 自定义气泡颜色（PALETTE 下标）；不填就按课名自动分配 */
+  tint?: number
   raw: any
 }
 
@@ -261,15 +264,16 @@ export function startTimeText(periods: PeriodTime[], index: number): string {
 
 export const INK = "#2B2B33"
 export const MUTED = "#6E6E7A"
-export const PILL = "rgba(43,43,51,0.88)"
+// 课程气泡里的「教室」胶囊：白字底，浅色模式用深灰、暗色模式用半透明黑（叠在浅气泡或深色气泡上都看得清）
+export const PILL = isDark() ? "rgba(0,0,0,0.55)" : "rgba(43,43,51,0.88)"
 
-const PALETTE: Array<{ bg: string; deep: string }> = [
-  { bg: "#E1CFEF", deep: "#8E5BB8" }, // 薰衣草
-  { bg: "#D8F2D6", deep: "#4C9A55" }, // 薄荷
-  { bg: "#F8DFE4", deep: "#D0627A" }, // 粉
-  { bg: "#FAEBD2", deep: "#D49A3A" }, // 奶油
-  { bg: "#D3E7F1", deep: "#3F8FB5" }, // 天蓝
-  { bg: "#FBDDCB", deep: "#E0794A" }, // 蜜桃
+export const PALETTE: Array<{ bg: string; deep: string; name: string }> = [
+  { bg: "#E1CFEF", deep: "#8E5BB8", name: "薰衣草" },
+  { bg: "#D8F2D6", deep: "#4C9A55", name: "薄荷" },
+  { bg: "#F8DFE4", deep: "#D0627A", name: "粉" },
+  { bg: "#FAEBD2", deep: "#D49A3A", name: "奶油" },
+  { bg: "#D3E7F1", deep: "#3F8FB5", name: "天蓝" },
+  { bg: "#FBDDCB", deep: "#E0794A", name: "蜜桃" },
 ]
 
 function paletteIndex(name: string): number {
@@ -286,6 +290,18 @@ export function colorForCourse(name: string): string {
 /** 课程深色（强调） */
 export function deepForCourse(name: string): string {
   return PALETTE[paletteIndex(name)].deep
+}
+
+/** 课程/自定义课的气泡底色（自己挑过颜色就用挑的） */
+export function colorForEvent(e: { name: string; tint?: number }): string {
+  const i = typeof e.tint === "number" && e.tint >= 0 && e.tint < PALETTE.length ? e.tint : paletteIndex(e.name)
+  return PALETTE[i].bg
+}
+
+/** 课程/自定义课的强调色 */
+export function deepForEvent(e: { name: string; tint?: number }): string {
+  const i = typeof e.tint === "number" && e.tint >= 0 && e.tint < PALETTE.length ? e.tint : paletteIndex(e.name)
+  return PALETTE[i].deep
 }
 
 /** 「未排地点」→「未排」，其余原样 */
