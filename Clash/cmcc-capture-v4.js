@@ -1,14 +1,14 @@
 // 移动余量 · Clash 模块脚本 v4（Clash for Apple Platforms 用）
-//
-// 触发方式不同，做的事不同：
-//   请求阶段（10086 两个域）：全部记 URL；autoLogin 额外存正文 + 请求头
-//   响应阶段（同样两个域，只挑几个业务接口）：把响应正文原样存下来（还是密文，交给脚本解）
-//   读回（https://example.com/cmcc-read-8f3a）：回一段 JSON
-//   面板：显示抓没抓到
+// 三种触发：
+//   http-request  → 记录 URL；autoLogin 额外存正文 + 请求头
+//   http-response → autoLogin 存响应头（含 set-cookie）；业务接口存响应正文
+//   https://example.com/cmcc-read-8f3a → 回一段 JSON
+//   面板 → 显示抓没抓到
 
 const K_CRED = "cmcc.autoLogin";
 const K_AT = "cmcc.autoLogin.at";
 const K_HDR = "cmcc.autoLogin.headers";
+const K_RSPH = "cmcc.autoLogin.rspHeaders";
 const K_SEEN = "cmcc.seen";
 const K_RSP = "cmcc.rsp";
 const READ = "/cmcc-read-8f3a";
@@ -29,15 +29,20 @@ const hasRsp = typeof $response !== "undefined" && $response;
 const url = hasReq ? String($request.url) : "";
 
 if (hasRsp) {
-  // ── 响应阶段：把业务接口的密文正文存下来 ──
+  // ── 响应阶段 ──
   const u = hasReq ? url : "";
-  const hit = WATCH.filter((n) => u.indexOf(n) >= 0)[0];
-  if (hit) {
-    const body = typeof $response.body === "string" ? $response.body : "";
-    const map = json(K_RSP, {});
-    map[hit] = { at: new Date().toLocaleString("zh-CN", { hour12: false }), body: body.slice(0, 20000) };
-    write(JSON.stringify(map), K_RSP);
-    console.log("cmcc: rsp " + hit + " [" + body.length + "]");
+  if (u.indexOf("/autoLogin") >= 0) {
+    try { write(JSON.stringify({ status: $response.status || 0, headers: $response.headers || {} }), K_RSPH) } catch (e) {}
+    console.log("cmcc: rsp autoLogin");
+  } else {
+    const hit = WATCH.filter((n) => u.indexOf(n) >= 0)[0];
+    if (hit) {
+      const body = typeof $response.body === "string" ? $response.body : "";
+      const map = json(K_RSP, {});
+      map[hit] = { at: new Date().toLocaleString("zh-CN", { hour12: false }), body: body.slice(0, 20000) };
+      write(JSON.stringify(map), K_RSP);
+      console.log("cmcc: rsp " + hit + " [" + body.length + "]");
+    }
   }
   $done({});
 } else if (!hasReq) {
@@ -59,6 +64,7 @@ if (hasRsp) {
         at: read(K_AT),
         cred: cred,
         headers: read(K_HDR),
+        rspHeaders: read(K_RSPH),
         seen: json(K_SEEN, []),
         rsp: json(K_RSP, {}),
       }),
